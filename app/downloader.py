@@ -8,6 +8,7 @@ import tempfile
 import os
 
 from yt_dlp import YoutubeDL
+import logging
 from .config import settings
 
 
@@ -83,6 +84,16 @@ def _cookies_file_for(u: str) -> Optional[str]:
         host = urlparse(u).hostname or ""
     except Exception:
         host = ""
+    log = logging.getLogger(__name__)
+    try:
+        log.info(
+            "cookie env presence: host=%s yt=%s li=%s",
+            host,
+            bool(settings.youtube_cookies_b64),
+            bool(settings.linkedin_cookies_b64),
+        )
+    except Exception:
+        pass
     # LinkedIn usually requires cookies to access media
     if host.endswith("linkedin.com") and settings.linkedin_cookies_b64:
         try:

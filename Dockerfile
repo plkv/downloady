@@ -18,4 +18,5 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "python -m app.bot || python app/bot.py"]
+# Use proper module execution (no fallback to hide errors)
+CMD ["python", "-m", "app.bot"]

@@ -17,13 +17,20 @@ from telegram.ext import (
 from telegram.error import BadRequest, TimedOut, NetworkError
 
 import aiohttp
+from aiohttp import web
 import tempfile
 import os
+import json
 
 from .config import settings
 from .downloader import extract_media_urls, find_urls, download_with_ytdlp
 
 
+# Configure logging BEFORE importing settings to catch early errors
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -352,6 +359,39 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.exception("Unhandled error while handling update: %s", context.error)
 
 
+async def health_check_handler(request: web.Request) -> web.Response:
+    """Health check endpoint for Railway and monitoring."""
+    return web.Response(
+        text=json.dumps({"status": "ok", "service": "downloady-bot"}),
+        content_type="application/json"
+    )
+
+
+async def webhook_handler(request: web.Request) -> web.Response:
+    """Handle incoming webhook updates from Telegram."""
+    # Verify secret token if configured
+    secret = getattr(settings, 'secret_token', None)
+    if secret:
+        header_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
+        if header_token != secret:
+            logger.warning("Webhook request with invalid secret token")
+            return web.Response(status=403)
+
+    # Get the telegram Application from app state
+    telegram_app: Application = request.app['telegram_app']
+
+    try:
+        data = await request.json()
+        update = Update.de_json(data, telegram_app.bot)
+        if update:
+            await telegram_app.update_queue.put(update)
+    except Exception as e:
+        logger.exception("Failed to process webhook update: %s", e)
+        return web.Response(status=500)
+
+    return web.Response(status=200)
+
+
 def build_app() -> Application:
     app = Application.builder().token(settings.telegram_token).build()
 
@@ -369,20 +409,86 @@ def build_app() -> Application:
     return app
 
 
-def main() -> None:
-    logging.basicConfig(
-        level=getattr(logging, getattr(settings, "log_level", "INFO"), logging.INFO),
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+async def run_webhook_server(telegram_app: Application, base_url: str, secret: Optional[str]) -> None:
+    """Run aiohttp web server with health check and webhook endpoints."""
+    # Create aiohttp web application
+    webapp = web.Application()
+
+    # Store telegram app in webapp state for webhook handler
+    webapp['telegram_app'] = telegram_app
+
+    # Add routes
+    webapp.router.add_get('/', health_check_handler)
+    webapp.router.add_post('/webhook', webhook_handler)
+
+    # Set webhook URL
+    webhook_url = f"{base_url}/webhook"
+    logger.info("Setting webhook URL: %s", webhook_url)
+
+    await telegram_app.bot.set_webhook(
+        url=webhook_url,
+        secret_token=secret,
+        drop_pending_updates=True,
     )
+
+    # Start telegram application (without webhook runner)
+    await telegram_app.initialize()
+    await telegram_app.start()
+
+    # Run aiohttp web server
+    runner = web.AppRunner(webapp)
+    await runner.setup()
+
+    site = web.TCPSite(runner, '0.0.0.0', settings.port)
+    logger.info("Starting webhook server on 0.0.0.0:%s", settings.port)
+    await site.start()
+
+    # Keep running until interrupted
+    try:
+        await asyncio.Event().wait()
+    finally:
+        logger.info("Shutting down webhook server...")
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+        await runner.cleanup()
+
+
+def main() -> None:
+    # Update log level from settings
+    log_level = getattr(logging, getattr(settings, "log_level", "INFO"), logging.INFO)
+    logging.getLogger().setLevel(log_level)
+
+    logger.info("Starting Downloady Telegram Bot...")
+
+    # Validate environment variables
+    try:
+        if not settings.telegram_token:
+            raise RuntimeError("TELEGRAM_TOKEN is required")
+
+        if settings.webhook_base:
+            if not settings.secret_token:
+                logger.warning(
+                    "WEBHOOK_BASE is set but SECRET_TOKEN is not. "
+                    "It's highly recommended to set SECRET_TOKEN for webhook security."
+                )
+            logger.info("Mode: webhook")
+        else:
+            logger.info("Mode: polling")
+
+    except Exception as e:
+        logger.exception("Failed to validate environment variables: %s", e)
+        raise
 
     try:
         import uvloop  # type: ignore
 
         uvloop.install()
+        logger.info("uvloop installed")
     except Exception:  # noqa: BLE001
-        pass
+        logger.info("uvloop not available, using default event loop")
 
-    app = build_app()
+    telegram_app = build_app()
+
     # Log cookies env presence at startup
     try:
         logger.info(
@@ -401,30 +507,24 @@ def main() -> None:
             import re as _re
 
             if secret and not _re.fullmatch(r"[A-Za-z0-9_]{1,256}", secret):
-                logger.warning(
-                    "SECRET_TOKEN contains unallowed characters; ignoring for webhook auth"
+                logger.error(
+                    "SECRET_TOKEN contains unallowed characters (must match [A-Za-z0-9_]{1,256})"
                 )
                 secret = None
         except Exception:  # noqa: BLE001
             pass
-        logger.info(
-            "Starting webhook on 0.0.0.0:%s path=/webhook base=%s",
-            settings.port,
-            base,
-        )
-        # NB: python-telegram-bot provides built-in webhook runner on aiohttp
-        # url_path is the path component for receiving updates.
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=settings.port,
-            url_path="webhook",
-            webhook_url=f"{base}/webhook",
-            secret_token=secret,
-            drop_pending_updates=True,
-        )
+
+        # Run webhook server with aiohttp
+        try:
+            asyncio.run(run_webhook_server(telegram_app, base, secret))
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal, shutting down...")
+        except Exception as e:
+            logger.exception("Webhook server failed: %s", e)
+            raise
     else:
         logger.info("Starting polling mode")
-        app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+        telegram_app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
