@@ -1,1 +1,1 @@
-web: python -m app.bot
+web: sh -c "python -m app.bot || python app/bot.py"
