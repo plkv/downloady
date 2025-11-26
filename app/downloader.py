@@ -169,7 +169,7 @@ def extract_media_urls(url: str) -> List[MediaItem]:
         },
         "geo_bypass": True,
         # For YouTube: use android client to avoid some checks
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "tv", "android"]}},
         # Some CDNs block IPv6 on servers
         "source_address": "0.0.0.0",
     }
@@ -311,7 +311,7 @@ def download_with_ytdlp(url: str) -> List[str]:
             "Accept": "*/*",
             "Referer": url,
         },
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "tv", "android"]}},
         "source_address": "0.0.0.0",
     }
     if cookiefile:
