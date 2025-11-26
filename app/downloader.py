@@ -102,8 +102,6 @@ def _cookies_file_for(u: str) -> Optional[str]:
             with os.fdopen(fd, "wb") as f:
                 f.write(raw)
             try:
-                import logging
-
                 logging.getLogger(__name__).info("linkedin cookies loaded: %d bytes", len(raw))
             except Exception:
                 pass
@@ -118,8 +116,6 @@ def _cookies_file_for(u: str) -> Optional[str]:
             with os.fdopen(fd, "wb") as f:
                 f.write(raw)
             try:
-                import logging
-
                 logging.getLogger(__name__).info("youtube cookies loaded: %d bytes", len(raw))
             except Exception:
                 pass
