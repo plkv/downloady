@@ -18,5 +18,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "-m", "app.bot"]
-
+CMD ["sh", "-c", "python -m app.bot || python app/bot.py"]
