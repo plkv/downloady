@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 
 
 def get_env(name: str, default: str | None = None, required: bool = False) -> str | None:
@@ -29,9 +29,24 @@ class Settings:
             ).split(",") if d.strip()
         ]
         self.log_level: str = (get_env("LOG_LEVEL", "INFO") or "INFO").upper()
-        # Optional cookies for specific domains
-        self.linkedin_cookies_b64: str | None = get_env("LINKEDIN_COOKIES_B64")
-        self.youtube_cookies_b64: str | None = get_env("YOUTUBE_COOKIES_B64")
+        # Optional cookies for specific domains (single var or chunked *_1,*_2,...)
+        self.linkedin_cookies_b64: Optional[str] = self._read_chunked("LINKEDIN_COOKIES_B64")
+        self.youtube_cookies_b64: Optional[str] = self._read_chunked("YOUTUBE_COOKIES_B64")
+
+    def _read_chunked(self, base: str) -> Optional[str]:
+        direct = get_env(base)
+        if direct:
+            return direct
+        # Join numeric chunks in order: VAR_1, VAR_2, ... until missing
+        parts: List[str] = []
+        idx = 1
+        while True:
+            val = get_env(f"{base}_{idx}")
+            if not val:
+                break
+            parts.append(val)
+            idx += 1
+        return "".join(parts) if parts else None
 
 
 settings = Settings()

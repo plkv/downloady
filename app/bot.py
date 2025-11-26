@@ -110,6 +110,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Always use heavy yt-dlp download for YouTube/Shorts to avoid Telegram fetch issues
     if any(_host(u).endswith(d) for u in urls for d in ("youtube.com", "youtu.be")):
+        logger.info("YouTube/Shorts detected; invoking heavy yt-dlp download path")
         files = await asyncio.gather(*[asyncio.to_thread(download_with_ytdlp, u) for u in urls])
         flat_files = [p for sub in files for p in sub]
         if flat_files:
@@ -364,7 +365,7 @@ def build_app() -> Application:
 
 def main() -> None:
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, getattr(settings, "log_level", "INFO"), logging.INFO),
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
