@@ -32,6 +32,7 @@
    - `LOG_LEVEL` — уровень логов (`INFO` по умолчанию)
    - `LINKEDIN_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) только для `linkedin.com`.\
      Как получить: установите расширение "Get cookies.txt", экспортируйте cookies для linkedin.com, затем `base64 -w0 cookies.txt` и вставьте значение сюда.
+   - `YOUTUBE_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) для `youtube.com`/`youtu.be`. Аналогично экспорт через "Get cookies.txt" из вашего браузера.
 3. В Procfile уже прописан процесс: `web: python -m app.bot`
 
 После старта, бот автоматически установит webhook на `<WEBHOOK_BASE>/webhook` и начнёт получать обновления.

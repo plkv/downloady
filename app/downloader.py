@@ -93,6 +93,16 @@ def _cookies_file_for(u: str) -> Optional[str]:
             return path
         except Exception:
             return None
+    # YouTube bot checks often require cookies
+    if (host.endswith("youtube.com") or host.endswith("youtu.be")) and settings.youtube_cookies_b64:
+        try:
+            raw = base64.b64decode(settings.youtube_cookies_b64)
+            fd, path = tempfile.mkstemp(prefix="cookies-youtube-", suffix=".txt")
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+            return path
+        except Exception:
+            return None
     return None
 
 
@@ -116,6 +126,8 @@ def extract_media_urls(url: str) -> List[MediaItem]:
             "Accept": "*/*",
         },
         "geo_bypass": True,
+        # For YouTube: use android client to avoid some checks
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
         # Some CDNs block IPv6 on servers
         "source_address": "0.0.0.0",
     }
@@ -234,6 +246,7 @@ def download_with_ytdlp(url: str) -> List[str]:
             "Accept": "*/*",
             "Referer": url,
         },
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
         "source_address": "0.0.0.0",
     }
     if cookiefile:
