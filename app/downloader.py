@@ -141,9 +141,17 @@ def _cookies_file_for(u: str) -> Optional[str]:
 
 
 def extract_media_urls(url: str) -> List[MediaItem]:
+    # For Instagram carousels, we need to allow playlist mode
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        host = ""
+    is_instagram = host.endswith("instagram.com")
+
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
-        "noplaylist": True,
+        # Instagram carousels are playlists - allow them!
+        "noplaylist": False if is_instagram else True,
         "skip_download": True,
         "no_warnings": True,
         "extract_flat": False,
@@ -258,6 +266,13 @@ def download_with_ytdlp(url: str) -> List[str]:
     tmpdir = tempfile.mkdtemp(prefix="ytdlp-")
     cookiefile = _cookies_file_for(url)
 
+    # For Instagram carousels, we need to allow playlist mode
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        host = ""
+    is_instagram = host.endswith("instagram.com")
+
     # Format selection priority:
     # 1. Best video+audio combo with H.264/AAC (most compatible)
     # 2. Best video+audio
@@ -265,12 +280,16 @@ def download_with_ytdlp(url: str) -> List[str]:
     # 4. Just best (fallback)
     # Avoid image formats and prefer actual video for reels
     fmt = (
-        "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]/bv*[ext=mp4]+ba/"
-        "bv*+ba/b[vcodec][ext=mp4]/b[vcodec]/b"
+        "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]/"
+        "bv*[ext=mp4]+ba/"
+        "bv*+ba/"
+        "b[ext=mp4]/"
+        "b"
     )
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
-        "noplaylist": True,
+        # Instagram carousels are playlists - allow them!
+        "noplaylist": False if is_instagram else True,
         "no_warnings": True,
         "restrictfilenames": True,
         "nocheckcertificate": True,
