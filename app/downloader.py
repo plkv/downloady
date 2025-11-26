@@ -126,8 +126,17 @@ def extract_media_urls(url: str) -> List[MediaItem]:
 
     items: List[MediaItem] = []
 
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    finally:
+        # cleanup temp cookies file if created
+        try:
+            cookiefile = ydl_opts.get("cookiefile")
+            if cookiefile:
+                os.unlink(cookiefile)
+        except Exception:
+            pass
 
     for entry in _iter_entries(info):
         title = (entry.get("title") or "").strip()
@@ -193,3 +202,58 @@ def extract_media_urls(url: str) -> List[MediaItem]:
 
 def find_urls(text: str) -> List[str]:
     return [m.group(0) for m in _URL_RE.finditer(text)]
+
+
+def download_with_ytdlp(url: str) -> List[str]:
+    """Download media to temporary files using yt-dlp (handles HLS).
+
+    Returns list of file paths. Caller must delete them.
+    """
+    tmpdir = tempfile.mkdtemp(prefix="ytdlp-")
+    cookiefile = _cookies_file_for(url)
+    fmt = "bv*+ba/b[ext=mp4]/b"  # prefer merged mp4
+    ydl_opts: Dict[str, Any] = {
+        "quiet": True,
+        "noplaylist": True,
+        "no_warnings": True,
+        "restrictfilenames": True,
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
+        "retries": 3,
+        "fragment_retries": 3,
+        "merge_output_format": "mp4",
+        "format": fmt,
+        "outtmpl": os.path.join(tmpdir, "%(title).80s-%(id)s.%(ext)s"),
+        "concurrent_fragment_downloads": 3,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Accept": "*/*",
+            "Referer": url,
+        },
+        "source_address": "0.0.0.0",
+    }
+    if cookiefile:
+        ydl_opts["cookiefile"] = cookiefile
+
+    files: List[str] = []
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            for entry in _iter_entries(info):
+                # Construct path by yt-dlp template or read from entry
+                # Use expected file path in tmpdir with ext
+                fn = entry.get("_filename") or None
+                if not fn:
+                    ext = (entry.get("ext") or "mp4").lower()
+                    vid = (entry.get("id") or "media")
+                    title = (entry.get("title") or "media")[:80]
+                    fn = os.path.join(tmpdir, f"{title}-{vid}.{ext}")
+                if os.path.exists(fn):
+                    files.append(fn)
+    finally:
+        try:
+            if cookiefile:
+                os.unlink(cookiefile)
+        except Exception:
+            pass
+    return files

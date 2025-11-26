@@ -21,7 +21,7 @@ import tempfile
 import os
 
 from .config import settings
-from .downloader import extract_media_urls, find_urls
+from .downloader import extract_media_urls, find_urls, download_with_ytdlp
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     media_items: List[Dict[str, Any]] = [it for sub in results for it in sub]
 
     if not media_items:
+        # Try heavy fallback with yt-dlp download (handles HLS-only sources like LinkedIn/Pinterest/Shorts)
+        files = await asyncio.gather(*[asyncio.to_thread(download_with_ytdlp, u) for u in urls])
+        flat_files = [p for sub in files for p in sub]
+        if flat_files:
+            await _send_files_group(update, flat_files)
+            return
         await update.effective_message.reply_text(
             "Не удалось извлечь медиа по ссылке. Попробуйте другую."
         )
@@ -141,6 +147,39 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await _download_and_send_item(update, item)
         except Exception as e:  # noqa: BLE001
             logger.exception("Fallback upload failed: %s", e)
+
+
+async def _send_files_group(update: Update, paths: List[str]) -> None:
+    # Compose media group from local files
+    media: List[InputMediaPhoto | InputMediaVideo] = []
+    handles: List[Any] = []
+    for p in paths[:10]:
+        ext = os.path.splitext(p)[1].lower()
+        fp = open(p, "rb")
+        handles.append(fp)
+        if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+            media.append(InputMediaPhoto(media=InputFile(fp)))
+        else:
+            media.append(InputMediaVideo(media=InputFile(fp)))
+    try:
+        if len(media) == 1:
+            if isinstance(media[0], InputMediaPhoto):
+                await update.effective_message.reply_photo(media[0].media)
+            else:
+                await update.effective_message.reply_video(media[0].media)
+        elif media:
+            await update.effective_message.reply_media_group(media)
+    finally:
+        for h in handles:
+            try:
+                h.close()
+            except Exception:
+                pass
+        for p in paths:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
 
 
 MAX_UPLOAD = max(1, int(getattr(settings, "max_upload_mb", 48))) * 1024 * 1024
