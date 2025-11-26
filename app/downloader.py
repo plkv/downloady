@@ -278,14 +278,20 @@ def download_with_ytdlp(url: str) -> List[str]:
     # 2. Best video+audio
     # 3. Best single file with video+audio
     # 4. Just best (fallback)
-    # Avoid image formats and prefer actual video for reels
-    fmt = (
-        "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]/"
-        "bv*[ext=mp4]+ba/"
-        "bv*+ba/"
-        "b[ext=mp4]/"
-        "b"
-    )
+    # Instagram carousels may contain photos, so use flexible format selection
+    if is_instagram:
+        # For Instagram: accept any format (videos or images)
+        fmt = "best"
+    else:
+        # For others: prefer video formats
+        fmt = (
+            "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]/"
+            "bv*[ext=mp4]+ba/"
+            "bv*+ba/"
+            "b[ext=mp4]/"
+            "b"
+        )
+
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
         # Instagram carousels are playlists - allow them!
@@ -293,7 +299,7 @@ def download_with_ytdlp(url: str) -> List[str]:
         "no_warnings": True,
         "restrictfilenames": True,
         "nocheckcertificate": True,
-        "ignoreerrors": True,
+        "ignoreerrors": False,  # Don't ignore errors - we want to see what's wrong
         "retries": 3,
         "fragment_retries": 3,
         "merge_output_format": "mp4",

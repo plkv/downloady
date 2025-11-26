@@ -1,4 +1,4 @@
 python-telegram-bot[webhooks]>=21.6
-yt-dlp>=2024.10.22
+yt-dlp>=2024.11.18
 aiohttp>=3.9.5
 uvloop; platform_system != 'Windows'

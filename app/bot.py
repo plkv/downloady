@@ -125,9 +125,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 force_fallback = True
                 break
 
-    # Always use heavy yt-dlp download for YouTube/Shorts to avoid Telegram fetch issues
-    if any(_host(u).endswith(d) for u in urls for d in ("youtube.com", "youtu.be")):
-        logger.info("YouTube/Shorts detected; invoking heavy yt-dlp download path")
+    # Always use heavy yt-dlp download for YouTube/Shorts and Instagram to avoid Telegram fetch issues
+    if any(_host(u).endswith(d) for u in urls for d in ("youtube.com", "youtu.be", "instagram.com")):
+        logger.info("YouTube/Shorts/Instagram detected; invoking heavy yt-dlp download path")
         files = await asyncio.gather(*[asyncio.to_thread(download_with_ytdlp, u) for u in urls])
         flat_files = [p for sub in files for p in sub]
         if flat_files:
