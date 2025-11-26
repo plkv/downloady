@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional, Dict, Any
 
 from telegram import InputMediaPhoto, InputMediaVideo, Update
 from telegram.constants import ChatAction
@@ -13,6 +13,11 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.error import BadRequest, TimedOut, NetworkError
+
+import aiohttp
+import tempfile
+import os
 
 from .config import settings
 from .downloader import extract_media_urls, find_urls
@@ -77,7 +82,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif item.get("type") == "video":
             videos.append(InputMediaVideo(media=item["url"]))
 
-    # Отправка: если один элемент — в исходный чат, если несколько — альбом
+    # Отправка: пробуем по URL. Если не удалось — качаем и заливаем.
     try:
         if len(media_items) == 1:
             one = media_items[0]
@@ -92,15 +97,77 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         media_group.extend(videos)
         if media_group:
             await update.effective_message.reply_media_group(media_group)
-        else:
-            await update.effective_message.reply_text(
-                "Не удалось подготовить медиа к отправке."
-            )
+            return
+    except (BadRequest, TimedOut, NetworkError) as e:
+        logger.warning("Direct send by URL failed, will fallback to upload: %s", e)
     except Exception as e:  # noqa: BLE001
-        logger.exception("Failed to send media: %s", e)
-        await update.effective_message.reply_text(
-            "Получил ссылки, но не смог отправить медиа."
-        )
+        logger.exception("Failed to send media by URL: %s", e)
+
+    # Fallback: скачать и загрузить по одному элементу
+    for item in media_items:
+        try:
+            await _download_and_send_item(update, item)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Fallback upload failed: %s", e)
+
+
+MAX_UPLOAD = 48 * 1024 * 1024  # 48 MB safety headroom
+
+
+async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
+    url = item.get("url")
+    if not url:
+        return
+    headers: Dict[str, str] = {}
+    src_headers = item.get("headers") or {}
+    for k, v in src_headers.items():
+        if isinstance(k, str) and isinstance(v, str):
+            headers[k] = v
+    # Reasonable defaults to reduce blocks
+    headers.setdefault(
+        "User-Agent",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    )
+    headers.setdefault("Accept", "*/*")
+    suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"download failed: HTTP {resp.status}")
+            size = int(resp.headers.get("Content-Length") or 0)
+            if size and size > MAX_UPLOAD:
+                await update.effective_message.reply_text(url)
+                return
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                tmp_path = f.name
+                written = 0
+                async for chunk in resp.content.iter_chunked(512 * 1024):
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > MAX_UPLOAD:
+                        f.close()
+                        try:
+                            os.unlink(tmp_path)
+                        except Exception:
+                            pass
+                        await update.effective_message.reply_text(url)
+                        return
+                    f.write(chunk)
+
+    try:
+        if item.get("type") == "image":
+            with open(tmp_path, "rb") as fp:
+                await update.effective_message.reply_photo(fp)
+        else:
+            with open(tmp_path, "rb") as fp:
+                await update.effective_message.reply_video(fp)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

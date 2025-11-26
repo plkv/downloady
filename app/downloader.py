@@ -12,6 +12,7 @@ class MediaItem(TypedDict, total=False):
     title: str
     ext: str
     filesize: Optional[int]
+    headers: Dict[str, Any]
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -94,6 +95,7 @@ def extract_media_urls(url: str) -> List[MediaItem]:
         # Video case
         best = pick_best_video_format(formats)
         if best and best.get("url"):
+            headers = best.get("http_headers") or {}
             items.append(
                 {
                     "type": "video",
@@ -101,6 +103,7 @@ def extract_media_urls(url: str) -> List[MediaItem]:
                     "title": title,
                     "ext": (best.get("ext") or ext or "").lower(),
                     "filesize": best.get("filesize") or best.get("filesize_approx"),
+                    "headers": headers,
                 }
             )
             continue
@@ -117,4 +120,3 @@ def extract_media_urls(url: str) -> List[MediaItem]:
 
 def find_urls(text: str) -> List[str]:
     return [m.group(0) for m in _URL_RE.finditer(text)]
-
