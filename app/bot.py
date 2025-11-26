@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import List, Optional, Dict, Any
 
-from telegram import InputMediaPhoto, InputMediaVideo, Update
+from telegram import InputMediaPhoto, InputMediaVideo, Update, FSInputFile
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -103,7 +103,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:  # noqa: BLE001
         logger.exception("Failed to send media by URL: %s", e)
 
-    # Fallback: скачать и загрузить по одному элементу
+    # Fallback: если элементов > 1 — пробуем отправить одним media group через локальные файлы
+    if len(media_items) > 1:
+        try:
+            media_group, tmp_paths = await _prepare_downloaded_group(media_items)
+            if media_group:
+                await update.effective_message.reply_media_group(media_group)
+                _cleanup_tmp(tmp_paths)
+                return
+            _cleanup_tmp(tmp_paths)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Group upload fallback failed: %s", e)
+
+    # Иначе — по одному элементу
     for item in media_items:
         try:
             await _download_and_send_item(update, item)
@@ -166,6 +178,73 @@ async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
     finally:
         try:
             os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
+async def _prepare_downloaded_group(items: List[Dict[str, Any]]):
+    tmp_paths: List[str] = []
+    media: List[InputMediaPhoto | InputMediaVideo] = []
+    for item in items:
+        path = await _download_to_tmp(item)
+        if not path:
+            continue
+        tmp_paths.append(path)
+        if item.get("type") == "image":
+            media.append(InputMediaPhoto(media=FSInputFile(path)))
+        else:
+            media.append(InputMediaVideo(media=FSInputFile(path)))
+    # Telegram ограничивает 2–10 в группе
+    if len(media) < 2:
+        return [], tmp_paths
+    return media[:10], tmp_paths
+
+
+async def _download_to_tmp(item: Dict[str, Any]) -> Optional[str]:
+    url = item.get("url")
+    if not url:
+        return None
+    headers: Dict[str, str] = {}
+    src_headers = item.get("headers") or {}
+    for k, v in src_headers.items():
+        if isinstance(k, str) and isinstance(v, str):
+            headers[k] = v
+    headers.setdefault(
+        "User-Agent",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    )
+    headers.setdefault("Accept", "*/*")
+    suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+            if resp.status != 200:
+                return None
+            size = int(resp.headers.get("Content-Length") or 0)
+            if size and size > MAX_UPLOAD:
+                return None
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                tmp_path = f.name
+                written = 0
+                async for chunk in resp.content.iter_chunked(512 * 1024):
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > MAX_UPLOAD:
+                        f.close()
+                        try:
+                            os.unlink(tmp_path)
+                        except Exception:
+                            pass
+                        return None
+                    f.write(chunk)
+    return tmp_path
+
+
+def _cleanup_tmp(paths: List[str]) -> None:
+    for p in paths:
+        try:
+            os.unlink(p)
         except Exception:
             pass
 
