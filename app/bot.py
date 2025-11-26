@@ -141,6 +141,18 @@ def main() -> None:
 
     if settings.webhook_base:
         base = settings.webhook_base.rstrip("/")
+        # Telegram secret_token: 1-256 chars, only [A-Za-z0-9_]
+        secret = settings.secret_token
+        try:
+            import re as _re
+
+            if secret and not _re.fullmatch(r"[A-Za-z0-9_]{1,256}", secret):
+                logger.warning(
+                    "SECRET_TOKEN contains unallowed characters; ignoring for webhook auth"
+                )
+                secret = None
+        except Exception:  # noqa: BLE001
+            pass
         logger.info(
             "Starting webhook on 0.0.0.0:%s path=/webhook base=%s",
             settings.port,
@@ -153,7 +165,7 @@ def main() -> None:
             port=settings.port,
             url_path="webhook",
             webhook_url=f"{base}/webhook",
-            secret_token=settings.secret_token,
+            secret_token=secret,
             drop_pending_updates=True,
         )
     else:
