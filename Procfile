@@ -1,1 +1,1 @@
-web: python -m app.bot
+web: bash /app/start.sh
