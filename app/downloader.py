@@ -13,6 +13,7 @@ class MediaItem(TypedDict, total=False):
     ext: str
     filesize: Optional[int]
     headers: Dict[str, Any]
+    source: str
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -97,13 +98,21 @@ def extract_media_urls(url: str) -> List[MediaItem]:
 
         # Image case (some extractors return direct image URL with ext)
         if (not formats) and direct_url and ext in {"jpg", "jpeg", "png", "webp", "gif"}:
-            items.append({"type": "image", "url": direct_url, "title": title, "ext": ext})
+            headers = (entry.get("http_headers") or {}).copy()
+            items.append({
+                "type": "image",
+                "url": direct_url,
+                "title": title,
+                "ext": ext,
+                "headers": headers,
+                "source": url,
+            })
             continue
 
         # Video case
         best = pick_best_video_format(formats)
         if best and best.get("url"):
-            headers = best.get("http_headers") or {}
+            headers = (best.get("http_headers") or {}).copy()
             items.append(
                 {
                     "type": "video",
@@ -112,6 +121,7 @@ def extract_media_urls(url: str) -> List[MediaItem]:
                     "ext": (best.get("ext") or ext or "").lower(),
                     "filesize": best.get("filesize") or best.get("filesize_approx"),
                     "headers": headers,
+                    "source": url,
                 }
             )
             continue
@@ -119,9 +129,25 @@ def extract_media_urls(url: str) -> List[MediaItem]:
         # Fallback: if extractor returned a direct url that looks like media
         if direct_url:
             if re.search(r"\.(mp4|m4v|mov|webm)(?:[?#].*)?$", direct_url, re.I):
-                items.append({"type": "video", "url": direct_url, "title": title, "ext": ext or "mp4"})
+                headers = (entry.get("http_headers") or {}).copy()
+                items.append({
+                    "type": "video",
+                    "url": direct_url,
+                    "title": title,
+                    "ext": ext or "mp4",
+                    "headers": headers,
+                    "source": url,
+                })
             elif re.search(r"\.(jpe?g|png|webp|gif)(?:[?#].*)?$", direct_url, re.I):
-                items.append({"type": "image", "url": direct_url, "title": title, "ext": ext or "jpg"})
+                headers = (entry.get("http_headers") or {}).copy()
+                items.append({
+                    "type": "image",
+                    "url": direct_url,
+                    "title": title,
+                    "ext": ext or "jpg",
+                    "headers": headers,
+                    "source": url,
+                })
 
     return items
 

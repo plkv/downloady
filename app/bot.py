@@ -161,6 +161,10 @@ async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
     )
     headers.setdefault("Accept", "*/*")
+    # Preserve referer to the source page when available
+    ref = item.get("source") or url
+    if isinstance(ref, str) and ref:
+        headers.setdefault("Referer", ref)
     suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
 
     async with aiohttp.ClientSession() as session:
@@ -246,6 +250,9 @@ async def _download_to_tmp(item: Dict[str, Any]) -> Optional[str]:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
     )
     headers.setdefault("Accept", "*/*")
+    ref = item.get("source") or url
+    if isinstance(ref, str) and ref:
+        headers.setdefault("Referer", ref)
     suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
 
     async with aiohttp.ClientSession() as session:

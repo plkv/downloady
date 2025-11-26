@@ -20,7 +20,13 @@ class Settings:
         self.download_concurrency: int = int(get_env("DOWNLOAD_CONCURRENCY", "3"))
         self.force_direct_only: bool = (get_env("FORCE_DIRECT_ONLY", "false") or "").lower() in {"1", "true", "yes", "on"}
         self.always_fallback_domains: List[str] = [
-            d.strip() for d in (get_env("ALWAYS_FALLBACK_DOMAINS", "instagram.com,x.com,twitter.com,pinterest.com,linkedin.com") or "").split(",") if d.strip()
+            d.strip() for d in (
+                get_env(
+                    "ALWAYS_FALLBACK_DOMAINS",
+                    "instagram.com,x.com,twitter.com,pinterest.com,linkedin.com,youtube.com,youtu.be",
+                )
+                or ""
+            ).split(",") if d.strip()
         ]
         self.log_level: str = (get_env("LOG_LEVEL", "INFO") or "INFO").upper()
 
