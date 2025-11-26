@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import List, Optional, Dict, Any
+from urllib.parse import urlparse
 
 from telegram import InputMediaPhoto, InputMediaVideo, Update, InputFile
 from telegram.constants import ChatAction
@@ -57,13 +58,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.effective_chat.send_action(ChatAction.TYPING)
 
-    media_items = []
-    for url in urls:
+    # Extract with threads + timeout per URL
+    async def _extract(u: str) -> List[Dict[str, Any]]:
         try:
-            items = extract_media_urls(url)
-            media_items.extend(items)
+            return await asyncio.wait_for(asyncio.to_thread(extract_media_urls, u), timeout=35)
         except Exception as e:  # noqa: BLE001
-            logger.exception("Failed to extract media from %s: %s", url, e)
+            logger.warning("extract failed for %s: %s", u, e)
+            return []
+
+    results = await asyncio.gather(*[_extract(u) for u in urls])
+    media_items: List[Dict[str, Any]] = [it for sub in results for it in sub]
 
     if not media_items:
         await update.effective_message.reply_text(
@@ -82,7 +86,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif item.get("type") == "video":
             videos.append(InputMediaVideo(media=item["url"]))
 
-    # Отправка: пробуем по URL. Если не удалось — качаем и заливаем.
+    # Отправка: пробуем по URL (если не принудительный локальный fallback). Если не удалось — качаем и заливаем.
+    # Force fallback by domain list unless FORCE_DIRECT_ONLY=true
+    def _host(u: str) -> str:
+        try:
+            return urlparse(u).hostname or ""
+        except Exception:
+            return ""
+
+    force_fallback = False
+    if not settings.force_direct_only:
+        for u in urls:
+            h = _host(u)
+            if any(h.endswith(d) for d in settings.always_fallback_domains if d):
+                force_fallback = True
+                break
+
     try:
         if len(media_items) == 1:
             one = media_items[0]
@@ -92,12 +111,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await update.effective_message.reply_video(one["url"])  # type: ignore[index]
             return
 
-        media_group = []
-        media_group.extend(photos)
-        media_group.extend(videos)
-        if media_group:
-            await update.effective_message.reply_media_group(media_group)
-            return
+        if not force_fallback:
+            media_group = []
+            media_group.extend(photos)
+            media_group.extend(videos)
+            if media_group:
+                await update.effective_message.reply_media_group(media_group)
+                return
     except (BadRequest, TimedOut, NetworkError) as e:
         logger.warning("Direct send by URL failed, will fallback to upload: %s", e)
     except Exception as e:  # noqa: BLE001
@@ -123,7 +143,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             logger.exception("Fallback upload failed: %s", e)
 
 
-MAX_UPLOAD = 48 * 1024 * 1024  # 48 MB safety headroom
+MAX_UPLOAD = max(1, int(getattr(settings, "max_upload_mb", 48))) * 1024 * 1024
 
 
 async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
@@ -144,7 +164,7 @@ async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
     suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=90)) as resp:
             if resp.status != 200:
                 raise RuntimeError(f"download failed: HTTP {resp.status}")
             size = int(resp.headers.get("Content-Length") or 0)
@@ -186,8 +206,15 @@ async def _prepare_downloaded_group(items: List[Dict[str, Any]]):
     tmp_paths: List[str] = []
     media: List[InputMediaPhoto | InputMediaVideo] = []
     handles: List[Any] = []
-    for item in items:
-        path = await _download_to_tmp(item)
+
+    sem = asyncio.Semaphore(max(1, int(getattr(settings, "download_concurrency", 3))))
+
+    async def _task(item: Dict[str, Any]) -> Optional[str]:
+        async with sem:
+            return await _download_to_tmp(item)
+
+    paths = await asyncio.gather(*[_task(it) for it in items])
+    for item, path in zip(items, paths):
         if not path:
             continue
         tmp_paths.append(path)
@@ -222,7 +249,7 @@ async def _download_to_tmp(item: Dict[str, Any]) -> Optional[str]:
     suffix = "." + (item.get("ext") or ("jpg" if item.get("type") == "image" else "mp4"))
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=90)) as resp:
             if resp.status != 200:
                 return None
             size = int(resp.headers.get("Content-Length") or 0)

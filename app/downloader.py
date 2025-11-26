@@ -72,6 +72,14 @@ def extract_media_urls(url: str) -> List[MediaItem]:
         "nocheckcertificate": True,
         "ignoreerrors": True,
         "default_search": "auto",
+        # Retries for flaky CDNs (X/Pinterest/LinkedIn often rate limit)
+        "retries": 3,
+        "fragment_retries": 3,
+        # User-Agent helps some CDNs
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Accept": "*/*",
+        },
         # Some CDNs block IPv6 on servers
         "source_address": "0.0.0.0",
     }

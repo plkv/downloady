@@ -25,6 +25,11 @@
    - `WEBHOOK_BASE` — внешняя HTTPS-ссылка сервиса, например `https://<your-service>.up.railway.app`
    - `SECRET_TOKEN` — строка 1–256 символов из набора `[A-Za-z0-9_]` (для валидации вебхука Телеграма)
    - `PORT` — не задавайте вручную, Railway подставит автоматически
+   - `MAX_UPLOAD_MB` — лимит локальной загрузки (по умолчанию 48)
+   - `DOWNLOAD_CONCURRENCY` — параллелизм скачивания групп (по умолчанию 3)
+   - `FORCE_DIRECT_ONLY` — если `true`, никогда не скачивать локально (только по ссылке)
+   - `ALWAYS_FALLBACK_DOMAINS` — домены, для которых всегда использовать локальную загрузку (например: `instagram.com,x.com,twitter.com,pinterest.com,linkedin.com`)
+   - `LOG_LEVEL` — уровень логов (`INFO` по умолчанию)
 3. В Procfile уже прописан процесс: `web: python -m app.bot`
 
 После старта, бот автоматически установит webhook на `<WEBHOOK_BASE>/webhook` и начнёт получать обновления.
