@@ -56,7 +56,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text("Не нашёл ссылок в сообщении.")
         return
 
-    await update.effective_chat.send_action(ChatAction.TYPING)
+    # Best-effort typing; don't fail on network hiccups
+    try:
+        await update.effective_chat.send_action(ChatAction.TYPING)
+    except (BadRequest, TimedOut, NetworkError) as e:
+        logger.warning("send_action failed, continue: %s", e)
+    except Exception:
+        pass
 
     # Extract with threads + timeout per URL
     async def _extract(u: str) -> List[Dict[str, Any]]:
@@ -377,6 +383,15 @@ def main() -> None:
         pass
 
     app = build_app()
+    # Log cookies env presence at startup
+    try:
+        logger.info(
+            "env cookies: youtube=%s linkedin=%s",
+            bool(getattr(settings, "youtube_cookies_b64", None)),
+            bool(getattr(settings, "linkedin_cookies_b64", None)),
+        )
+    except Exception:
+        pass
 
     if settings.webhook_base:
         base = settings.webhook_base.rstrip("/")
