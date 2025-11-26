@@ -82,6 +82,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     results = await asyncio.gather(*[_extract(u) for u in urls])
     media_items: List[Dict[str, Any]] = [it for sub in results for it in sub]
 
+    logger.info("Extracted %d media items from %d URLs", len(media_items), len(urls))
+    for i, item in enumerate(media_items[:5]):  # Log first 5 items
+        logger.info("Item %d: type=%s url=%s", i, item.get("type"), item.get("url", "")[:80])
+
     if not media_items:
         # Try heavy fallback with yt-dlp download (handles HLS-only sources like LinkedIn/Pinterest/Shorts)
         files = await asyncio.gather(*[asyncio.to_thread(download_with_ytdlp, u) for u in urls])
@@ -173,6 +177,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def _send_files_group(update: Update, paths: List[str]) -> None:
     # Compose media group from local files
+    logger.info("Sending %d files as group", len(paths))
     media: List[InputMediaPhoto | InputMediaVideo] = []
     handles: List[Any] = []
     for p in paths[:10]:

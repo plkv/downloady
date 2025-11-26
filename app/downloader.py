@@ -257,10 +257,16 @@ def download_with_ytdlp(url: str) -> List[str]:
     """
     tmpdir = tempfile.mkdtemp(prefix="ytdlp-")
     cookiefile = _cookies_file_for(url)
-    # Prefer H.264 MP4 up to 720p to fit Telegram limits for Shorts
+
+    # Format selection priority:
+    # 1. Best video+audio combo with H.264/AAC (most compatible)
+    # 2. Best video+audio
+    # 3. Best single file with video+audio
+    # 4. Just best (fallback)
+    # Avoid image formats and prefer actual video for reels
     fmt = (
-        "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/"
-        "bv*+ba/b[ext=mp4]/b"
+        "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]/bv*[ext=mp4]+ba/"
+        "bv*+ba/b[vcodec][ext=mp4]/b[vcodec]/b"
     )
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
@@ -287,10 +293,13 @@ def download_with_ytdlp(url: str) -> List[str]:
         ydl_opts["cookiefile"] = cookiefile
 
     files: List[str] = []
+    log = logging.getLogger(__name__)
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+            entries_count = 0
             for entry in _iter_entries(info):
+                entries_count += 1
                 # Construct path by yt-dlp template or read from entry
                 # Use expected file path in tmpdir with ext
                 fn = entry.get("_filename") or None
@@ -301,6 +310,8 @@ def download_with_ytdlp(url: str) -> List[str]:
                     fn = os.path.join(tmpdir, f"{title}-{vid}.{ext}")
                 if os.path.exists(fn):
                     files.append(fn)
+                    log.info("Downloaded file %d/%d: %s (%.1f KB)", len(files), entries_count, os.path.basename(fn), os.path.getsize(fn)/1024)
+            log.info("Total downloaded %d files from %d entries for URL: %s", len(files), entries_count, url[:80])
     finally:
         try:
             if cookiefile:
