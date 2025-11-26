@@ -37,16 +37,25 @@ class Settings:
         direct = get_env(base)
         if direct:
             return direct
-        # Join numeric chunks in order: VAR_1, VAR_2, ... until missing
-        parts: List[str] = []
-        idx = 1
-        while True:
-            val = get_env(f"{base}_{idx}")
-            if not val:
-                break
-            parts.append(val)
-            idx += 1
-        return "".join(parts) if parts else None
+
+        def series(start: int, fmt: str) -> List[str]:
+            acc: List[str] = []
+            i = start
+            while True:
+                key = f"{base}_{format(i, fmt)}" if fmt else f"{base}_{i}"
+                val = get_env(key)
+                if not val:
+                    break
+                acc.append(val)
+                i += 1
+            return acc
+
+        # Try 1-based non-padded: _1,_2,... then 0-based: _0,_1,...
+        for start, fmt in ((1, ""), (0, ""), (0, "02"), (0, "03")):
+            parts = series(start, fmt)
+            if parts:
+                return "".join(parts)
+        return None
 
 
 settings = Settings()
