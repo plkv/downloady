@@ -108,6 +108,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 force_fallback = True
                 break
 
+    # Always use heavy yt-dlp download for YouTube/Shorts to avoid Telegram fetch issues
+    if any(_host(u).endswith(d) for u in urls for d in ("youtube.com", "youtu.be")):
+        files = await asyncio.gather(*[asyncio.to_thread(download_with_ytdlp, u) for u in urls])
+        flat_files = [p for sub in files for p in sub]
+        if flat_files:
+            await _send_files_group(update, flat_files)
+            return
+
     try:
         if len(media_items) == 1:
             one = media_items[0]

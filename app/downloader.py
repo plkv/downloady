@@ -211,7 +211,11 @@ def download_with_ytdlp(url: str) -> List[str]:
     """
     tmpdir = tempfile.mkdtemp(prefix="ytdlp-")
     cookiefile = _cookies_file_for(url)
-    fmt = "bv*+ba/b[ext=mp4]/b"  # prefer merged mp4
+    # Prefer H.264 MP4 up to 720p to fit Telegram limits for Shorts
+    fmt = (
+        "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/"
+        "bv*+ba/b[ext=mp4]/b"
+    )
     ydl_opts: Dict[str, Any] = {
         "quiet": True,
         "noplaylist": True,
