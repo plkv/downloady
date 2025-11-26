@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import List, Optional, Dict, Any
 
-from telegram import InputMediaPhoto, InputMediaVideo, Update, FSInputFile
+from telegram import InputMediaPhoto, InputMediaVideo, Update, InputFile
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -106,12 +106,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # Fallback: если элементов > 1 — пробуем отправить одним media group через локальные файлы
     if len(media_items) > 1:
         try:
-            media_group, tmp_paths = await _prepare_downloaded_group(media_items)
+            media_group, tmp_paths, handles = await _prepare_downloaded_group(media_items)
             if media_group:
                 await update.effective_message.reply_media_group(media_group)
-                _cleanup_tmp(tmp_paths)
+                _cleanup_tmp(tmp_paths, handles)
                 return
-            _cleanup_tmp(tmp_paths)
+            _cleanup_tmp(tmp_paths, handles)
         except Exception as e:  # noqa: BLE001
             logger.exception("Group upload fallback failed: %s", e)
 
@@ -185,19 +185,24 @@ async def _download_and_send_item(update: Update, item: Dict[str, Any]) -> None:
 async def _prepare_downloaded_group(items: List[Dict[str, Any]]):
     tmp_paths: List[str] = []
     media: List[InputMediaPhoto | InputMediaVideo] = []
+    handles: List[Any] = []
     for item in items:
         path = await _download_to_tmp(item)
         if not path:
             continue
         tmp_paths.append(path)
         if item.get("type") == "image":
-            media.append(InputMediaPhoto(media=FSInputFile(path)))
+            fp = open(path, "rb")
+            handles.append(fp)
+            media.append(InputMediaPhoto(media=InputFile(fp)))
         else:
-            media.append(InputMediaVideo(media=FSInputFile(path)))
+            fp = open(path, "rb")
+            handles.append(fp)
+            media.append(InputMediaVideo(media=InputFile(fp)))
     # Telegram ограничивает 2–10 в группе
     if len(media) < 2:
-        return [], tmp_paths
-    return media[:10], tmp_paths
+        return [], tmp_paths, handles
+    return media[:10], tmp_paths, handles
 
 
 async def _download_to_tmp(item: Dict[str, Any]) -> Optional[str]:
@@ -241,7 +246,13 @@ async def _download_to_tmp(item: Dict[str, Any]) -> Optional[str]:
     return tmp_path
 
 
-def _cleanup_tmp(paths: List[str]) -> None:
+def _cleanup_tmp(paths: List[str], handles: Optional[List[Any]] = None) -> None:
+    if handles:
+        for h in handles:
+            try:
+                h.close()
+            except Exception:
+                pass
     for p in paths:
         try:
             os.unlink(p)
