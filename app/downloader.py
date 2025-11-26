@@ -87,13 +87,28 @@ def _cookies_file_for(u: str) -> Optional[str]:
     log = logging.getLogger(__name__)
     try:
         log.info(
-            "cookie env presence: host=%s yt=%s li=%s",
+            "cookie env presence: host=%s ig=%s yt=%s li=%s",
             host,
+            bool(settings.instagram_cookies_b64),
             bool(settings.youtube_cookies_b64),
             bool(settings.linkedin_cookies_b64),
         )
     except Exception:
         pass
+    # Instagram requires cookies to access most content (reels, carousels, etc.)
+    if host.endswith("instagram.com") and settings.instagram_cookies_b64:
+        try:
+            raw = base64.b64decode(settings.instagram_cookies_b64)
+            fd, path = tempfile.mkstemp(prefix="cookies-instagram-", suffix=".txt")
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+            try:
+                logging.getLogger(__name__).info("instagram cookies loaded: %d bytes", len(raw))
+            except Exception:
+                pass
+            return path
+        except Exception:
+            return None
     # LinkedIn usually requires cookies to access media
     if host.endswith("linkedin.com") and settings.linkedin_cookies_b64:
         try:

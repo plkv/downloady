@@ -30,9 +30,12 @@
    - `FORCE_DIRECT_ONLY` — если `true`, никогда не скачивать локально (только по ссылке)
    - `ALWAYS_FALLBACK_DOMAINS` — домены, для которых всегда использовать локальную загрузку (например: `instagram.com,x.com,twitter.com,pinterest.com,linkedin.com`)
    - `LOG_LEVEL` — уровень логов (`INFO` по умолчанию)
+   - `INSTAGRAM_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) для `instagram.com`.\
+     **Обязательно для работы с Instagram!** Без cookies не работают рилсы и карусели.\
+     Как получить: установите расширение "Get cookies.txt LOCALLY", авторизуйтесь в Instagram, экспортируйте cookies, затем `base64 -w0 cookies.txt` (Linux/Mac) или `certutil -encode cookies.txt cookies.b64` (Windows) и вставьте значение сюда.
    - `LINKEDIN_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) только для `linkedin.com`.\
-     Как получить: установите расширение "Get cookies.txt", экспортируйте cookies для linkedin.com, затем `base64 -w0 cookies.txt` и вставьте значение сюда.
-   - `YOUTUBE_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) для `youtube.com`/`youtu.be`. Аналогично экспорт через "Get cookies.txt" из вашего браузера.
+     Как получить: установите расширение "Get cookies.txt LOCALLY", экспортируйте cookies для linkedin.com, затем `base64 -w0 cookies.txt` и вставьте значение сюда.
+   - `YOUTUBE_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) для `youtube.com`/`youtu.be`. Аналогично экспорт через "Get cookies.txt LOCALLY" из вашего браузера.
 3. В Procfile уже прописан процесс: `web: python -m app.bot`
 
 После старта, бот автоматически установит webhook на `<WEBHOOK_BASE>/webhook` и начнёт получать обновления.

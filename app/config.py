@@ -30,6 +30,7 @@ class Settings:
         ]
         self.log_level: str = (get_env("LOG_LEVEL", "INFO") or "INFO").upper()
         # Optional cookies for specific domains (single var or chunked *_1,*_2,...)
+        self.instagram_cookies_b64: Optional[str] = self._read_chunked("INSTAGRAM_COOKIES_B64")
         self.linkedin_cookies_b64: Optional[str] = self._read_chunked("LINKEDIN_COOKIES_B64")
         self.youtube_cookies_b64: Optional[str] = self._read_chunked("YOUTUBE_COOKIES_B64")
 

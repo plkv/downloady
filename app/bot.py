@@ -496,7 +496,8 @@ def main() -> None:
     # Log cookies env presence at startup
     try:
         logger.info(
-            "env cookies: youtube=%s linkedin=%s",
+            "env cookies: instagram=%s youtube=%s linkedin=%s",
+            bool(getattr(settings, "instagram_cookies_b64", None)),
             bool(getattr(settings, "youtube_cookies_b64", None)),
             bool(getattr(settings, "linkedin_cookies_b64", None)),
         )
