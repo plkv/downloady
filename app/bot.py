@@ -442,10 +442,14 @@ async def run_webhook_server(telegram_app: Application, base_url: str, secret: O
     site = web.TCPSite(runner, '0.0.0.0', settings.port)
     logger.info("Starting webhook server on 0.0.0.0:%s", settings.port)
     await site.start()
+    logger.info("Webhook server is running and ready to accept requests")
 
-    # Keep running until interrupted
+    # Keep running forever (until interrupted)
     try:
-        await asyncio.Event().wait()
+        # Use Future that never completes to keep server running
+        await asyncio.Future()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.info("Received stop signal")
     finally:
         logger.info("Shutting down webhook server...")
         await telegram_app.stop()
