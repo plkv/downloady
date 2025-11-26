@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, Iterable, List, Literal, Optional, TypedDict
+from urllib.parse import urlparse
+import base64
+import tempfile
+import os
 
 from yt_dlp import YoutubeDL
+from .config import settings
 
 
 class MediaItem(TypedDict, total=False):
@@ -47,6 +52,17 @@ def pick_best_video_format(formats: List[Dict[str, Any]]) -> Optional[Dict[str, 
         # Prefer larger resolution, then bitrate, then smaller file
         return (int(height), float(tbr), -int(filesize))
 
+    # Prefer formats under the upload cap if possible
+    try:
+        cap = int(getattr(settings, "max_upload_mb", 48)) * 1024 * 1024
+    except Exception:
+        cap = 48 * 1024 * 1024
+
+    under_cap = [f for f in candidates if (f.get("filesize") or f.get("filesize_approx") or 0) and int(f.get("filesize") or f.get("filesize_approx") or 0) <= cap]
+    if under_cap:
+        under_cap.sort(key=score, reverse=True)
+        return under_cap[0]
+
     candidates.sort(key=score, reverse=True)
     return candidates[0] if candidates else None
 
@@ -60,6 +76,24 @@ def _iter_entries(info: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
                 yield e
     else:
         yield info
+
+
+def _cookies_file_for(u: str) -> Optional[str]:
+    try:
+        host = urlparse(u).hostname or ""
+    except Exception:
+        host = ""
+    # LinkedIn usually requires cookies to access media
+    if host.endswith("linkedin.com") and settings.linkedin_cookies_b64:
+        try:
+            raw = base64.b64decode(settings.linkedin_cookies_b64)
+            fd, path = tempfile.mkstemp(prefix="cookies-linkedin-", suffix=".txt")
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+            return path
+        except Exception:
+            return None
+    return None
 
 
 def extract_media_urls(url: str) -> List[MediaItem]:
@@ -81,9 +115,14 @@ def extract_media_urls(url: str) -> List[MediaItem]:
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
             "Accept": "*/*",
         },
+        "geo_bypass": True,
         # Some CDNs block IPv6 on servers
         "source_address": "0.0.0.0",
     }
+
+    cookiefile = _cookies_file_for(url)
+    if cookiefile:
+        ydl_opts["cookiefile"] = cookiefile
 
     items: List[MediaItem] = []
 

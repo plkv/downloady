@@ -30,6 +30,8 @@
    - `FORCE_DIRECT_ONLY` — если `true`, никогда не скачивать локально (только по ссылке)
    - `ALWAYS_FALLBACK_DOMAINS` — домены, для которых всегда использовать локальную загрузку (например: `instagram.com,x.com,twitter.com,pinterest.com,linkedin.com`)
    - `LOG_LEVEL` — уровень логов (`INFO` по умолчанию)
+   - `LINKEDIN_COOKIES_B64` — base64‑кодированный `cookies.txt` (формат Netscape) только для `linkedin.com`.\
+     Как получить: установите расширение "Get cookies.txt", экспортируйте cookies для linkedin.com, затем `base64 -w0 cookies.txt` и вставьте значение сюда.
 3. В Procfile уже прописан процесс: `web: python -m app.bot`
 
 После старта, бот автоматически установит webhook на `<WEBHOOK_BASE>/webhook` и начнёт получать обновления.

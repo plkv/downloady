@@ -29,6 +29,8 @@ class Settings:
             ).split(",") if d.strip()
         ]
         self.log_level: str = (get_env("LOG_LEVEL", "INFO") or "INFO").upper()
+        # Optional cookies for specific domains
+        self.linkedin_cookies_b64: str | None = get_env("LINKEDIN_COOKIES_B64")
 
 
 settings = Settings()
